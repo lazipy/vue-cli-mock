@@ -1,6 +1,6 @@
 {
   "name": "vue-cli-mock",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A quick build mock plug-in based on vue-cli3",
   "main": "dist/index.cjs.js",
   "scripts": {
