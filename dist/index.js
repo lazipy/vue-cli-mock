@@ -4,12 +4,12 @@
 }(function () { 'use strict';
 
   const requireContext = require('require-context');
-  const mockFiles = requireContext(`${__dirname}/mock`, true, /\.js$/);
+  const mockFiles = requireContext(`${process.cwd()}/mock`, true, /\.js$/);
 
   let mockModules = [];
   if (mockFiles.keys().length > 0) {
     mockFiles.keys().forEach(key => {
-      mockModules.push(require(`./mock/${key}`));
+      mockModules.push(require(`${process.cwd()}/mock/${key}`));
     });
   }
 

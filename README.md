@@ -15,7 +15,7 @@ const mock = require('vue-cli-mock')
 module.exports = {
   devServer: {
     before (app) {
-      mock(app)
+      mock(app, 'mock')
     }
   }
 }
