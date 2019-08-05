@@ -1,35 +1,79 @@
 'use strict';
 
+const chokidar = require('chokidar');
+const bodyParser = require('body-parser');
+const chalk = require('chalk');
+const path = require('path');
+const mockDir = path.join(process.cwd(), 'mock');
 const requireContext = require('require-context');
-const mockFiles = requireContext(`${process.cwd()}/mock`, true, /\.js$/);
+const mockFiles = requireContext(mockDir, true, /\.js$/);
 
-let mockModules = [];
-if (mockFiles.keys().length > 0) {
-  mockFiles.keys().forEach(key => {
-    mockModules.push(require(`${process.cwd()}/mock/${key}`));
+function registerRoutes(app) {
+  let mockModules = [];
+  if (mockFiles.keys().length > 0) {
+    mockFiles.keys().forEach(key => {
+      if (key.includes('mock-server')) return;
+      mockModules.push(require(`${mockDir}/${key}`));
+    });
+  }
+  let mockLastIndex;
+  const mocks = mockModules.reduce((prev, next) => prev.concat(next));
+  for (const mock of mocks) {
+    app[mock.type](mock.url, mock.response);
+    mockLastIndex = app._router.stack.length;
+  }
+  const mockRoutesLength = Object.keys(mocks).length;
+  return {
+    mockRoutesLength: mockRoutesLength,
+    mockStartIndex: mockLastIndex - mockRoutesLength
+  };
+}
+
+function unregisterRoutes() {
+  Object.keys(require.cache).forEach(i => {
+    if (i.includes(mockDir)) {
+      delete require.cache[require.resolve(i)];
+    }
   });
 }
 
-module.exports = function (app) {
-  const methods = ['GET', 'POST', 'PUT', 'DELETE', 'get', 'post', 'put', 'delete'];
-  for (let mock of mockModules) {
-    Object.keys(mock).forEach(key => {
-      let method = key.split(' ')[0];
-      let url = key.split(' ')[1];
-      if (!methods.includes(method)) {
-        method = 'get';
-        url = key;
-      } else {
-        method = method.toLowerCase();
-      }
+module.exports = app => {
+  // es6 polyfill
+  require('@babel/register');
 
-      app[method](url, function (req, res) {
-        if (typeof mock[key] === 'function') {
-          mock[key](req, res);
-        } else {
-          res.json(mock[key]);
-        }
-      });
-    });
-  }
+  // parse app.body
+  // https://expressjs.com/en/4x/api.html#req.body
+  app.use(bodyParser.json());
+  app.use(bodyParser.urlencoded({
+    extended: true
+  }));
+
+  const mockRoutes = registerRoutes(app);
+  var mockRoutesLength = mockRoutes.mockRoutesLength;
+  var mockStartIndex = mockRoutes.mockStartIndex;
+
+  // watch files, hot reload mock server
+  chokidar.watch(mockDir, {
+    ignored: /mock-server/,
+    ignoreInitial: true
+  }).on('all', (event, path) => {
+    if (event === 'change' || event === 'add') {
+      try {
+        console.log(mockStartIndex, mockRoutesLength);
+        // remove mock routes stack
+        app._router.stack.splice(mockStartIndex, mockRoutesLength);
+
+        // clear routes cache
+        unregisterRoutes();
+
+        const mockRoutes = registerRoutes(app);
+        mockRoutesLength = mockRoutes.mockRoutesLength;
+        mockStartIndex = mockRoutes.mockStartIndex;
+
+        console.log(chalk.magentaBright(`\n > Mock Server hot reload success! changed  ${path}`));
+      } catch (error) {
+        console.log(chalk.redBright(error));
+      }
+    }
+  });
 };
